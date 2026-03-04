@@ -1,4 +1,7 @@
 (() => {
+     if (window.__ABOUBA_SALES_UPGRADES_INIT__) return;
+    window.__ABOUBA_SALES_UPGRADES_INIT__ = true;
+
     const salesStatus = document.getElementById("salesStatus");
     const salesBody = document.getElementById("salesBody");
     const metricTotalRevenue = document.getElementById("metricTotalRevenue");
