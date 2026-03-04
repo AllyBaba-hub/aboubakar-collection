@@ -417,5 +417,5 @@
         if (exportCsvBtn) exportCsvBtn.addEventListener("click", exportSalesCsv);
     }
 
-    startEnhancements();
+    //subscribeSalesRealtime();
 })();
