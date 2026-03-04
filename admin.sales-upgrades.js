@@ -1,7 +1,7 @@
 (() => {
     if (window.__ABOUBA_SALES_UPGRADES_INIT__) return;
     window.__ABOUBA_SALES_UPGRADES_INIT__ = true;
-    const BUILD_TAG = "sales-upgrades-v6-no-auto-loop";
+    //const BUILD_TAG = "sales-upgrades-v6-no-auto-loop";
     console.log(BUILD_TAG);
 
     const salesStatus = document.getElementById("salesStatus");
