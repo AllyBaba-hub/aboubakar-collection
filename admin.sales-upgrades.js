@@ -26,6 +26,7 @@
     let salesChannel = null;
     const seenRealtimeEvents = new Map();
     const inFlightSales = new Set();
+    const inFlightDeletes = new Set();
 
     function setStatusText(el, message, isError = false) {
         if (!el) return;
@@ -293,6 +294,18 @@
         }
     }
 
+    function formatDbError(prefix, err) {
+        if (!err) return prefix;
+        const parts = [
+            err.message || "",
+            err.details || "",
+            err.hint || "",
+            err.code ? `code=${err.code}` : "",
+            err.status ? `status=${err.status}` : ""
+        ].filter(Boolean);
+        return `${prefix}: ${parts.join(" | ")}`;
+    }
+
     window.markSold = async function(productId) {
         if (!currentAdminEmail) {
             currentAdminEmail = await getSessionEmail();
@@ -313,7 +326,8 @@
                 .single();
             if (productError || !product) throw new Error(productError?.message || "Product not found");
 
-            const currentStock = Math.max(1, Number(product.stock) || 1);
+            const rawStock = Number(product.stock);
+            const currentStock = Number.isFinite(rawStock) ? rawStock : 1;
             if (product.status === "sold" || currentStock <= 0) throw new Error("Product already sold.");
 
             const price = Number(product.price) || 0;
@@ -321,43 +335,34 @@
             const nextStock = currentStock - 1;
             const nextStatus = nextStock > 0 ? "available" : "sold";
 
-            const { error: rpcError } = await supabaseClient.rpc("record_sale_and_adjust_inventory", {
-                p_product_id: product.id,
-                p_name: product.name || "Unnamed",
-                p_price_rwf: price,
-                p_quantity: 1,
-                p_total_price: totalPrice,
-                p_sold_by: currentAdminEmail,
-                p_next_stock: nextStock,
-                p_next_status: nextStatus
-            });
+            // Reliable path: insert sale first, then adjust inventory; rollback sale if inventory update fails.
+            const { data: inserted, error: saleError } = await supabaseClient
+                .from("sales")
+                .insert([{
+                    product_id: product.id,
+                    name: product.name || "Unnamed",
+                    price_rwf: price,
+                    quantity: 1,
+                    total_price: totalPrice,
+                    sold_by: currentAdminEmail,
+                    status: "completed"
+                }])
+                .select("id")
+                .single();
+            if (saleError) {
+                throw new Error(formatDbError("Sale insert failed", saleError));
+            }
 
-            if (rpcError) {
-                const { data: inserted, error: saleError } = await supabaseClient
-                    .from("sales")
-                    .insert([{
-                        product_id: product.id,
-                        name: product.name || "Unnamed",
-                        price_rwf: price,
-                        quantity: 1,
-                        total_price: totalPrice,
-                        sold_by: currentAdminEmail,
-                        status: "completed"
-                    }])
-                    .select("id")
-                    .single();
-                if (saleError) throw new Error(saleError.message || "Sale insert failed");
+            const { error: updateError } = await supabaseClient
+                .from("products")
+                .update({ stock: nextStock, status: nextStatus })
+                .eq("id", product.id)
+                .eq("status", product.status)
+                .gt("stock", 0);
 
-                const { error: updateError } = await supabaseClient
-                    .from("products")
-                    .update({ stock: nextStock, status: nextStatus })
-                    .eq("id", product.id)
-                    .eq("status", product.status);
-
-                if (updateError) {
-                    await supabaseClient.from("sales").delete().eq("id", inserted.id);
-                    throw new Error(updateError.message || "Inventory update failed");
-                }
+            if (updateError) {
+                await supabaseClient.from("sales").delete().eq("id", inserted.id);
+                throw new Error(formatDbError("Inventory update failed", updateError));
             }
 
             if (totalPrice > 100000) alert("High Value Sale Recorded");
@@ -418,53 +423,65 @@
     };
 
     window.deleteProduct = async function(productId, imageUrl) {
+        if (inFlightDeletes.has(productId)) return;
         const confirmed = window.confirm("Delete this product permanently?");
         if (!confirmed) return;
+        inFlightDeletes.add(productId);
 
-        const { error: deleteError } = await supabaseClient
-            .from("products")
-            .delete()
-            .eq("id", productId);
-
-        if (!deleteError) {
-            try {
-                const marker = `/storage/v1/object/public/${STORAGE_BUCKET}/`;
-                const index = (imageUrl || "").indexOf(marker);
-                if (index !== -1) {
-                    const path = imageUrl.slice(index + marker.length).split("?")[0];
-                    if (path) await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]);
-                }
-            } catch (cleanupErr) {
-                console.warn("Image cleanup warning:", cleanupErr);
-            }
-
-            await loadInventory();
-            return;
-        }
-
-        // Product is referenced by sales history; preserve history and archive product instead.
-        if (deleteError.code === "23503") {
-            const archiveConfirmed = window.confirm(
-                "This product has sales history and cannot be deleted. Archive it instead?"
-            );
-            if (!archiveConfirmed) return;
-
-            const { error: archiveError } = await supabaseClient
+        try {
+            const { error: deleteError } = await supabaseClient
                 .from("products")
-                .update({ status: "archived", stock: 0 })
+                .delete()
                 .eq("id", productId);
 
-            if (archiveError) {
-                alert(`Archive failed: ${archiveError.message}`);
+            if (!deleteError) {
+                try {
+                    const marker = `/storage/v1/object/public/${STORAGE_BUCKET}/`;
+                    const index = (imageUrl || "").indexOf(marker);
+                    if (index !== -1) {
+                        const path = imageUrl.slice(index + marker.length).split("?")[0];
+                        if (path) await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]);
+                    }
+                } catch (cleanupErr) {
+                    console.warn("Image cleanup warning:", cleanupErr);
+                }
+
+                await loadInventory();
                 return;
             }
 
-            await loadInventory();
-            await refreshSalesDashboard(false);
-            return;
-        }
+            const errorText = `${deleteError.message || ""} ${deleteError.details || ""}`.toLowerCase();
+            const isFkConflict = deleteError.code === "23503" ||
+                deleteError.status === 409 ||
+                errorText.includes("foreign key constraint") ||
+                errorText.includes("violates");
 
-        alert(`Delete failed: ${deleteError.message}`);
+            // Product is referenced by sales history; preserve history and archive product instead.
+            if (isFkConflict) {
+                const archiveConfirmed = window.confirm(
+                    "This product has sales history and cannot be deleted. Archive it instead?"
+                );
+                if (!archiveConfirmed) return;
+
+                const { error: archiveError } = await supabaseClient
+                    .from("products")
+                    .update({ status: "archived", stock: 0 })
+                    .eq("id", productId);
+
+                if (archiveError) {
+                    alert(`Archive failed: ${archiveError.message}`);
+                    return;
+                }
+
+                await loadInventory();
+                await refreshSalesDashboard(false);
+                return;
+            }
+
+            alert(`Delete failed: ${deleteError.message}`);
+        } finally {
+            inFlightDeletes.delete(productId);
+        }
     };
 
     function subscribeSalesRealtime() {
