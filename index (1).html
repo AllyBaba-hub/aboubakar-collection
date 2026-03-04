@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Aboubakar's Collection in Musanze: shop quality fashion products online, negotiate and pay via WhatsApp, with live inventory updates.">
+    <meta name="keywords" content="Aboubakar Collection, Musanze shop, Rwanda fashion, online shop, WhatsApp shopping">
+    <meta name="robots" content="index,follow">
+    <meta property="og:title" content="Aboubakar's Collection | Online &amp; Market">
+    <meta property="og:description" content="Browse available products from Aboubakar's Collection and order quickly via WhatsApp.">
+    <meta property="og:type" content="website">
+    <title>"Aboubakar's Collection | Online & Market</title>
+    <link rel="icon" href="alogo.jpg" type="image/jpeg"> 
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+
+    <style>
+        :root {
+            --bg: #f4f7f6;
+            --card: #ffffff;
+            --text: #2c3e50;
+            --accent: #25d366;
+            --accent-dark: #128c7e;
+            --muted: #95a5a6;
+            --shadow: rgba(0, 0, 0, 0.08);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: var(--text);
+        }
+
+        .brand-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .logo-img {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            border-radius: 50%;
+            background-color: #fff;
+            box-shadow: 0 4px 10px var(--shadow);
+            padding: 10px;
+        }
+
+        h1 { margin: 10px 0 5px 0; }
+
+        .subtitle {
+            color: var(--accent);
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .status-line {
+            width: 100%;
+            max-width: 1100px;
+            color: #5d6d7e;
+            margin: 0 0 10px;
+            font-size: 0.95rem;
+        }
+
+        .shop-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 20px;
+            max-width: 1100px;
+            width: 100%;
+            min-height: 100px;
+        }
+
+        .product-card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 14px;
+            box-shadow: 0 10px 20px var(--shadow);
+            text-align: center;
+            transition: transform 0.2s ease;
+        }
+
+        .product-card:hover { transform: translateY(-4px); }
+
+        .product-image {
+            width: 100%;
+            height: 240px;
+            object-fit: cover;
+            border-radius: 12px;
+            background-color: #ececec;
+        }
+
+        .product-name {
+            margin: 10px 0 8px;
+            font-size: 1.1rem;
+        }
+
+        .price-tag {
+            font-size: 1.25rem;
+            font-weight: bold;
+            margin: 0 0 12px;
+        }
+
+        .whatsapp-btn {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            font-size: 1rem;
+        }
+
+        .whatsapp-btn:hover { background-color: var(--accent-dark); }
+
+        .placeholder {
+            grid-column: 1 / -1;
+            text-align: center;
+            color: #687784;
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 18px var(--shadow);
+        }
+
+        footer {
+            margin-top: 50px;
+            padding: 24px;
+            color: var(--muted);
+            font-size: 0.85rem;
+            text-align: center;
+            border-top: 1px solid #ddd;
+            width: 100%;
+        }
+
+        footer a {
+            color: #7f8c8d;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="brand-header">
+        <img src="logo.jpg" alt="Aboubakar's Collection Logo" class="logo-img">
+        <h1>ABOUBAKAR'S COLLECTION</h1>
+        <p class="subtitle">Negotiate &amp; Pay via WhatsApp</p>
+    </div>
+
+    <p class="status-line" id="statusLine">Loading products...</p>
+    <div class="shop-container" id="shopContainer"></div>
+
+    <footer>
+        <p>&copy; 2026 "Aboubakar's Collection - Musanze, Rwanda</p>
+        <a href="login.html">Staff Login</a>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = 'https://tquzycsemanwmymlwkiy.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxdXp5Y3NlbWFud215bWx3a2l5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1ODYwNDEsImV4cCI6MjA4NzE2MjA0MX0.1rqcsediRJClY6Q2uN9oyZFkffo2h87654-9FMDzgHY';
+    
+        // Shared Supabase client section for static hosting.
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const shopContainer = document.getElementById("shopContainer");
+        const statusLine = document.getElementById("statusLine");
+
+        function formatRwf(value) {
+            return new Intl.NumberFormat("en-RW", {
+                style: "currency",
+                currency: "RWF",
+                maximumFractionDigits: 0
+            }).format(Number(value) || 0);
+        }
+
+        function escapeHtml(text) {
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function renderProducts(products) {
+            if (!products.length) {
+                shopContainer.innerHTML = '<div class="placeholder">No available products right now.</div>';
+                statusLine.textContent = "No available products.";
+                return;
+            }
+
+            statusLine.textContent = `${products.length} product(s) available.`;
+            shopContainer.innerHTML = products.map((item) => {
+                const safeName = escapeHtml(item.name || "Unnamed product");
+                const safeImage = escapeHtml(item.image || "");
+                const safePrice = Number(item.price) || 0;
+
+                return `
+                    <article class="product-card">
+                        <img src="${safeImage}" alt="${safeName}" class="product-image" loading="lazy">
+                        <h3 class="product-name">${safeName}</h3>
+                        <p class="price-tag">${formatRwf(safePrice)}</p>
+                        <button class="whatsapp-btn" onclick="openWhatsApp('${safeName}', ${safePrice})">Chat on WhatsApp</button>
+                    </article>
+                `;
+            }).join("");
+        }
+
+        async function loadProducts() {
+            statusLine.textContent = "Loading products...";
+            shopContainer.innerHTML = '<div class="placeholder">Loading products...</div>';
+
+            const { data, error } = await supabaseClient
+                .from("products")
+                .select("id, name, price, image, status, created_at")
+                .eq("status", "available")
+                .order("created_at", { ascending: false });
+
+            if (error) {
+                console.error("Failed to fetch products:", error);
+                statusLine.textContent = "Failed to load products.";
+                shopContainer.innerHTML = '<div class="placeholder">Unable to load products. Please try again later.</div>';
+                return;
+            }
+
+            renderProducts(data || []);
+        }
+
+        function subscribeRealtime() {
+            supabaseClient
+                .channel("public:products:shop")
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "products" },
+                    () => {
+                        loadProducts();
+                    }
+                )
+                .subscribe((status) => {
+                    if (status === "SUBSCRIBED") {
+                        console.log("Realtime connected for shop inventory");
+                    }
+                });
+        }
+
+        window.openWhatsApp = (name, price) => {
+            const phone = "250790797023";
+            const message = `Hello! I'm interested in ${name} (${formatRwf(price)}) from Aboubakar's Collection.`;
+            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
+        };
+
+        loadProducts();
+        subscribeRealtime();
+    </script>
+</body>
+</html>
