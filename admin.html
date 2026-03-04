@@ -428,7 +428,7 @@
 
             const { data, error } = await supabaseClient
                 .from("products")
-                .select("id, name, price, image, status, created_at")
+                .select("id, name, price, image, status, created_at, stock")
                 .order("created_at", { ascending: false });
 
             if (error) {
@@ -451,7 +451,9 @@
             inventoryBody.innerHTML = products.map((item) => {
                 const safeName = escapeHtml(item.name || "Unnamed");
                 const safeImage = escapeHtml(item.image || "");
-                const isSold = item.status === "sold";
+                const stock = Number(item.stock);
+                const hasStockValue = Number.isFinite(stock);
+                const isSold = item.status === "sold" || (hasStockValue && stock <= 0);
                 const created = item.created_at ? new Date(item.created_at).toLocaleString() : "-";
 
                 return `
