@@ -225,18 +225,6 @@
         }, 250);
     }
 
-    function isMeaningfulSalesUpdate(payload) {
-        if (!payload || payload.eventType !== "UPDATE") return true;
-        const before = payload.old || {};
-        const after = payload.new || {};
-        return (
-            before.status !== after.status ||
-            Number(before.quantity) !== Number(after.quantity) ||
-            Number(before.total_price) !== Number(after.total_price) ||
-            before.sold_date !== after.sold_date
-        );
-    }
-
     function handleSalesRealtime(payload) {
         const rowId = payload?.new?.id || payload?.old?.id || "";
         const eventType = payload?.eventType || "";
@@ -250,7 +238,7 @@
 
         if (seenRealtimeEvents.has(key)) return;
         seenRealtimeEvents.set(key, now);
-        if (!isMeaningfulSalesUpdate(payload)) return;
+        if (payload?.eventType !== "INSERT") return;
         queueSalesRefresh();
     }
 
@@ -434,7 +422,6 @@
         salesChannel = supabaseClient
             .channel("public:sales:admin-enhanced")
             .on("postgres_changes", { event: "INSERT", schema: "public", table: "sales" }, handleSalesRealtime)
-            .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sales" }, handleSalesRealtime)
             .subscribe();
     }
 
