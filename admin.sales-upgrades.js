@@ -127,7 +127,7 @@
             dailyRevenueChart = new Chart(document.getElementById("dailyRevenueChart"), {
                 type: "line",
                 data: { labels: [], datasets: [{ label: "Revenue", data: [], borderColor: "#1f8ef1", backgroundColor: "rgba(31,142,241,0.14)", fill: true, tension: 0.24 }] },
-                options: { responsive: true, maintainAspectRatio: false }
+                options: { responsive: true, maintainAspectRatio: true, aspectRatio: 2, animation: false }
             });
         }
 
@@ -135,7 +135,7 @@
             topProductsChart = new Chart(document.getElementById("topProductsChart"), {
                 type: "bar",
                 data: { labels: [], datasets: [{ label: "Qty Sold", data: [], backgroundColor: "#1b9c5a" }] },
-                options: { responsive: true, maintainAspectRatio: false }
+                options: { responsive: true, maintainAspectRatio: true, aspectRatio: 2, animation: false }
             });
         }
     }
