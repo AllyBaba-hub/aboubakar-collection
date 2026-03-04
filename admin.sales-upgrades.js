@@ -417,6 +417,56 @@
         }
     };
 
+    window.deleteProduct = async function(productId, imageUrl) {
+        const confirmed = window.confirm("Delete this product permanently?");
+        if (!confirmed) return;
+
+        const { error: deleteError } = await supabaseClient
+            .from("products")
+            .delete()
+            .eq("id", productId);
+
+        if (!deleteError) {
+            try {
+                const marker = `/storage/v1/object/public/${STORAGE_BUCKET}/`;
+                const index = (imageUrl || "").indexOf(marker);
+                if (index !== -1) {
+                    const path = imageUrl.slice(index + marker.length).split("?")[0];
+                    if (path) await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]);
+                }
+            } catch (cleanupErr) {
+                console.warn("Image cleanup warning:", cleanupErr);
+            }
+
+            await loadInventory();
+            return;
+        }
+
+        // Product is referenced by sales history; preserve history and archive product instead.
+        if (deleteError.code === "23503") {
+            const archiveConfirmed = window.confirm(
+                "This product has sales history and cannot be deleted. Archive it instead?"
+            );
+            if (!archiveConfirmed) return;
+
+            const { error: archiveError } = await supabaseClient
+                .from("products")
+                .update({ status: "archived", stock: 0 })
+                .eq("id", productId);
+
+            if (archiveError) {
+                alert(`Archive failed: ${archiveError.message}`);
+                return;
+            }
+
+            await loadInventory();
+            await refreshSalesDashboard(false);
+            return;
+        }
+
+        alert(`Delete failed: ${deleteError.message}`);
+    };
+
     function subscribeSalesRealtime() {
         if (salesChannel) {
             try { supabaseClient.removeChannel(salesChannel); } catch (_) {}
