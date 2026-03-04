@@ -1,6 +1,8 @@
 (() => {
     if (window.__ABOUBA_SALES_UPGRADES_INIT__) return;
     window.__ABOUBA_SALES_UPGRADES_INIT__ = true;
+    const BUILD_TAG = "sales-upgrades-v6-no-auto-loop";
+    console.log(BUILD_TAG);
 
     const salesStatus = document.getElementById("salesStatus");
     const salesBody = document.getElementById("salesBody");
@@ -22,7 +24,6 @@
     let needsRefresh = false;
     let lastRefreshAt = 0;
     let salesChannel = null;
-    let salesPollTimer = null;
     const seenRealtimeEvents = new Map();
     const inFlightSales = new Set();
 
@@ -426,22 +427,14 @@
             .subscribe();
     }
 
-    function startSalesAutoRefresh() {
-        if (salesPollTimer) clearInterval(salesPollTimer);
-        salesPollTimer = setInterval(() => {
-            refreshSalesDashboard(false);
-        }, 5000);
-    }
-
     async function startEnhancements() {
         if (!supabaseClient || !salesStatus) return;
         currentAdminEmail = await getSessionEmail();
         await ensureSalesTable();
         await refreshSalesDashboard();
-        // Realtime sales channel is disabled due event-loop storms in this deployment.
-        // Keep live-ish updates with safe background polling.
+        // Realtime sales channel disabled to avoid loop storms in this deployment.
+        // Polling disabled as well; dashboard refreshes on page load and after actions.
         // subscribeSalesRealtime();
-        startSalesAutoRefresh();
         if (exportCsvBtn) exportCsvBtn.addEventListener("click", exportSalesCsv);
     }
 
