@@ -22,6 +22,7 @@
     let needsRefresh = false;
     let lastRefreshAt = 0;
     let salesChannel = null;
+    let salesPollTimer = null;
     const seenRealtimeEvents = new Map();
     const inFlightSales = new Set();
 
@@ -425,12 +426,22 @@
             .subscribe();
     }
 
+    function startSalesAutoRefresh() {
+        if (salesPollTimer) clearInterval(salesPollTimer);
+        salesPollTimer = setInterval(() => {
+            refreshSalesDashboard(false);
+        }, 5000);
+    }
+
     async function startEnhancements() {
         if (!supabaseClient || !salesStatus) return;
         currentAdminEmail = await getSessionEmail();
         await ensureSalesTable();
         await refreshSalesDashboard();
-        subscribeSalesRealtime();
+        // Realtime sales channel is disabled due event-loop storms in this deployment.
+        // Keep live-ish updates with safe background polling.
+        // subscribeSalesRealtime();
+        startSalesAutoRefresh();
         if (exportCsvBtn) exportCsvBtn.addEventListener("click", exportSalesCsv);
     }
 
