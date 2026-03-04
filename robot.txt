@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Keep search engines out of your admin and login pages
+Disallow: /admin.html
+Disallow: /login.html
+
+Sitemap: https://abouba-s-shop.vercel.app/sitemap.xml
