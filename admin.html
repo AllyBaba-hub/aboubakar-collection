@@ -465,8 +465,8 @@
                         <td>${escapeHtml(created)}</td>
                         <td>
                             <div class="actions">
-                                <button class="btn btn-success" ${isSold ? "disabled" : ""} onclick="markSold('${item.id}')">Mark Sold</button>
-                                <button class="btn btn-danger" onclick="deleteProduct('${item.id}', '${safeImage}')">Delete</button>
+                                <button type="button" class="btn btn-success" ${isSold ? "disabled" : ""} onclick="markSold('${item.id}', this)">Mark Sold</button>
+                                <button type="button" class="btn btn-danger" onclick="deleteProduct('${item.id}', '${safeImage}', this)">Delete</button>
                             </div>
                         </td>
                     </tr>
@@ -524,7 +524,7 @@
 
                 const { error: insertError } = await supabaseClient
                     .from("products")
-                    .insert([{ name, price, image: publicUrl, status: "available" }]);
+                    .insert([{ name, price, image: publicUrl, status: "available", stock: 1 }]);
 
                 if (insertError) {
                     throw new Error(insertError.message || "Product insert failed");
@@ -547,23 +547,48 @@
             }
         });
 
-        window.markSold = async function(productId) {
+        window.markSold = async function(productId, buttonEl) {
+            if (buttonEl) buttonEl.disabled = true;
+            const { data: product, error: fetchError } = await supabaseClient
+                .from("products")
+                .select("*")
+                .eq("id", productId)
+                .single();
+
+            if (fetchError) {
+                console.error(fetchError);
+                alert(fetchError.message || "Failed to load product");
+                if (buttonEl) buttonEl.disabled = false;
+                return;
+            }
+
+            if (!product) {
+                alert("Product not found");
+                if (buttonEl) buttonEl.disabled = false;
+                return;
+            }
+
             const { error } = await supabaseClient
                 .from("products")
                 .update({ status: "sold" })
                 .eq("id", productId);
 
             if (error) {
-                alert(`Failed to mark sold: ${error.message}`);
+                console.error(error);
+                alert(error.message || "Failed to mark product as sold");
+                if (buttonEl) buttonEl.disabled = false;
                 return;
             }
 
+            alert("Product marked as sold");
             await loadInventory();
+            if (buttonEl) buttonEl.disabled = false;
         };
 
-        window.deleteProduct = async function(productId, imageUrl) {
+        window.deleteProduct = async function(productId, imageUrl, buttonEl) {
             const confirmed = window.confirm("Delete this product permanently?");
             if (!confirmed) return;
+            if (buttonEl) buttonEl.disabled = true;
 
             const { error: deleteError } = await supabaseClient
                 .from("products")
@@ -571,7 +596,9 @@
                 .eq("id", productId);
 
             if (deleteError) {
-                alert(`Delete failed: ${deleteError.message}`);
+                console.error(deleteError);
+                alert(deleteError.message || "Delete failed");
+                if (buttonEl) buttonEl.disabled = false;
                 return;
             }
 
@@ -582,7 +609,11 @@
                 if (index !== -1) {
                     const path = imageUrl.slice(index + marker.length).split("?")[0];
                     if (path) {
-                        await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]);
+                        const { error: storageError } = await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]);
+                        if (storageError) {
+                            console.error(storageError);
+                            alert(storageError.message);
+                        }
                     }
                 }
             } catch (cleanupErr) {
@@ -590,6 +621,7 @@
             }
 
             await loadInventory();
+            if (buttonEl) buttonEl.disabled = false;
         };
 
         logoutBtn.addEventListener("click", async () => {
