@@ -11,6 +11,8 @@
     const metricTodaySold = document.getElementById("metricTodaySold");
     const metricMonthlyRevenue = document.getElementById("metricMonthlyRevenue");
     const exportCsvBtn = document.getElementById("exportCsvBtn");
+    const resetFiltersBtn = document.getElementById("resetFiltersBtn");
+    const resetFiltersWrap = document.getElementById("resetFiltersWrap");
     const filterFrom = document.getElementById("filterFrom");
     const filterTo = document.getElementById("filterTo");
     const filterProduct = document.getElementById("filterProduct");
@@ -27,6 +29,7 @@
     const seenRealtimeEvents = new Map();
     const inFlightSales = new Set();
     const inFlightDeletes = new Set();
+    const deleteUnlockClicks = [];
 
     function setStatusText(el, message, isError = false) {
         if (!el) return;
@@ -105,7 +108,7 @@
     async function updateDashboardMetrics() {
         const { data, error } = await supabaseClient
             .from("sales")
-            .select("total_price");
+            .select("total_price, price_rwf, quantity, status");
 
         if (error) {
             console.error(error);
@@ -115,7 +118,11 @@
 
         let revenue = 0;
         for (const sale of data || []) {
-            revenue += Number(sale.total_price) || 0;
+            const status = String(sale.status || "completed").toLowerCase();
+            if (status === "returned" || status === "cancelled" || status === "void") continue;
+            const qty = Math.max(1, Number(sale.quantity) || 1);
+            const rowTotal = Number(sale.total_price);
+            revenue += Number.isFinite(rowTotal) ? rowTotal : (Number(sale.price_rwf) || 0) * qty;
         }
 
         if (metricTotalRevenue) metricTotalRevenue.textContent = rwf(revenue);
@@ -132,9 +139,11 @@
         let monthlyRevenue = 0;
 
         for (const row of rows) {
-            if (row.status !== "completed") continue;
-            const qty = Number(row.quantity) || 0;
-            const total = Number(row.total_price) || 0;
+            const status = String(row.status || "completed").toLowerCase();
+            if (status === "returned" || status === "cancelled" || status === "void") continue;
+            const qty = Math.max(1, Number(row.quantity) || 1);
+            const rowTotal = Number(row.total_price);
+            const total = Number.isFinite(rowTotal) ? rowTotal : (Number(row.price_rwf) || 0) * qty;
             totalRevenue += total;
             soldItems += qty;
             if (dateKey(row.sold_date) === today) todaySold += qty;
@@ -179,11 +188,15 @@
         const byDay = new Map();
         const byProduct = new Map();
         for (const row of rows) {
-            if (row.status !== "completed") continue;
+            const status = String(row.status || "completed").toLowerCase();
+            if (status === "returned" || status === "cancelled" || status === "void") continue;
             const day = dateKey(row.sold_date);
-            if (day) byDay.set(day, (byDay.get(day) || 0) + (Number(row.total_price) || 0));
+            const qty = Math.max(1, Number(row.quantity) || 1);
+            const rowTotal = Number(row.total_price);
+            const total = Number.isFinite(rowTotal) ? rowTotal : (Number(row.price_rwf) || 0) * qty;
+            if (day) byDay.set(day, (byDay.get(day) || 0) + total);
             const name = row.name || "Unnamed";
-            byProduct.set(name, (byProduct.get(name) || 0) + (Number(row.quantity) || 0));
+            byProduct.set(name, (byProduct.get(name) || 0) + qty);
         }
 
         const labels = Array.from(byDay.keys()).sort();
@@ -205,17 +218,18 @@
         }
 
         salesBody.innerHTML = rows.map((row) => {
-            const isReturned = row.status === "returned";
+            const status = String(row.status || "completed").toLowerCase();
+            const isReturned = status === "returned";
             const soldDate = row.sold_date ? new Date(row.sold_date).toLocaleString() : "-";
             return `
                 <tr>
                     <td>${safeText(soldDate)}</td>
                     <td>${safeText(row.name || "Unnamed")}</td>
-                    <td>${safeText(String(row.quantity || 0))}</td>
+                    <td>${safeText(String(Math.max(1, Number(row.quantity) || 1)))}</td>
                     <td>${rwf(row.price_rwf)}</td>
                     <td>${rwf(row.total_price)}</td>
                     <td>${safeText(row.sold_by || "-")}</td>
-                    <td>${safeText(row.status || "completed")}</td>
+                    <td>${safeText(status)}</td>
                     <td><button class="btn btn-danger" ${isReturned ? "disabled" : ""} onclick="returnSale('${row.id}', '${row.product_id || ""}')">Return</button></td>
                 </tr>
             `;
@@ -323,6 +337,26 @@
         } finally {
             exportCsvBtn.disabled = false;
             exportCsvBtn.textContent = original;
+        }
+    }
+
+    async function resetSalesFilters() {
+        if (filterFrom) filterFrom.value = "";
+        if (filterTo) filterTo.value = "";
+        if (filterProduct) filterProduct.value = "";
+        if (filterSoldBy) filterSoldBy.value = "";
+        await refreshSalesDashboard(false);
+    }
+
+    function trackDeleteUnlockSequence() {
+        const now = Date.now();
+        deleteUnlockClicks.push(now);
+        while (deleteUnlockClicks.length && now - deleteUnlockClicks[0] > 4000) {
+            deleteUnlockClicks.shift();
+        }
+        if (deleteUnlockClicks.length >= 5 && resetFiltersWrap) {
+            resetFiltersWrap.style.display = "block";
+            deleteUnlockClicks.length = 0;
         }
     }
 
@@ -487,6 +521,7 @@
 
     window.deleteProduct = async function(productId, imageUrl, buttonEl) {
         if (inFlightDeletes.has(productId)) return;
+        trackDeleteUnlockSequence();
         const confirmed = window.confirm("Delete this product permanently?");
         if (!confirmed) return;
         inFlightDeletes.add(productId);
@@ -576,6 +611,7 @@
         // Polling disabled as well; dashboard refreshes on page load and after actions.
         // subscribeSalesRealtime();
         if (exportCsvBtn) exportCsvBtn.addEventListener("click", exportSalesCsv);
+        if (resetFiltersBtn) resetFiltersBtn.addEventListener("click", resetSalesFilters);
     }
 
     startEnhancements();
