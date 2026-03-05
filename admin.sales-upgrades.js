@@ -82,14 +82,45 @@
         console.warn("Sales table ensure warning:", message);
     }
 
-    async function fetchSales() {
+    function renderSalesTable(rows) {
+        renderSales(rows || []);
+    }
+
+    async function loadSalesReport() {
         const { data, error } = await supabaseClient
             .from("sales")
             .select("id, product_id, name, price_rwf, quantity, total_price, sold_date, sold_by, status")
-            .order("sold_date", { ascending: false })
-            .limit(500);
-        if (error) throw new Error(error.message || "Failed to load sales");
+            .order("sold_date", { ascending: false });
+
+        if (error) {
+            console.error(error);
+            alert(error.message || "Failed to load sales report");
+            return [];
+        }
+
+        renderSalesTable(data || []);
         return data || [];
+    }
+
+    async function updateDashboardMetrics() {
+        const { data, error } = await supabaseClient
+            .from("sales")
+            .select("total_price");
+
+        if (error) {
+            console.error(error);
+            alert(error.message || "Failed to load revenue metrics");
+            return;
+        }
+
+        let revenue = 0;
+        for (const sale of data || []) {
+            revenue += Number(sale.total_price) || 0;
+        }
+
+        if (metricTotalRevenue) metricTotalRevenue.textContent = rwf(revenue);
+        const totalRevenueEl = document.getElementById("totalRevenue");
+        if (totalRevenueEl) totalRevenueEl.innerText = `${revenue} RWF`;
     }
 
     function calcMetrics(rows) {
@@ -199,10 +230,10 @@
         isRefreshing = true;
         if (showLoading) setStatusText(salesStatus, "Loading sales...");
         try {
-            const rows = await fetchSales();
-            renderSales(rows);
+            const rows = await loadSalesReport();
             renderMetrics(calcMetrics(rows));
             updateCharts(rows);
+            await updateDashboardMetrics();
             setStatusText(salesStatus, `${rows.length} sale record(s).`);
         } catch (error) {
             console.error(error);
@@ -287,6 +318,7 @@
             }
             triggerCsvDownload(`sales-report-${new Date().toISOString().slice(0, 10)}.csv`, `${lines.join("\n")}\n`);
         } catch (error) {
+            console.error(error);
             alert(error.message || "CSV export failed");
         } finally {
             exportCsvBtn.disabled = false;
@@ -312,6 +344,9 @@
         if (buttonEl) buttonEl.disabled = true;
 
         try {
+            if (!currentAdminEmail) currentAdminEmail = await getSessionEmail();
+            const soldBy = currentAdminEmail || "admin";
+
             const { data: product, error: fetchError } = await supabaseClient
                 .from("products")
                 .select("*")
@@ -329,18 +364,58 @@
                 return;
             }
 
-            const { error } = await supabaseClient
-                .from("products")
-                .update({ status: "sold" })
-                .eq("id", productId);
-
-            if (error) {
-                console.error(error);
-                alert(error.message || "Failed to mark product as sold");
+            const rawStock = Number(product.stock);
+            const currentStock = Number.isFinite(rawStock) ? rawStock : 1;
+            if (product.status === "sold" || currentStock <= 0) {
+                alert("Product already sold");
                 return;
             }
 
-            alert("Product marked as sold");
+            const price = Number(product.price) || 0;
+            const { data: insertedSale, error: salesError } = await supabaseClient
+                .from("sales")
+                .insert([{
+                    product_id: product.id,
+                    name: product.name || "Unnamed",
+                    price_rwf: price,
+                    quantity: 1,
+                    total_price: price,
+                    sold_by: soldBy,
+                    status: "completed"
+                }])
+                .select("id")
+                .single();
+
+            if (salesError) {
+                console.error(salesError);
+                alert(salesError.message || "Failed to record sale");
+                return;
+            }
+
+            const nextStock = Math.max(0, currentStock - 1);
+            const nextStatus = nextStock > 0 ? "available" : "sold";
+            const { error: updateError } = await supabaseClient
+                .from("products")
+                .update({ status: nextStatus, stock: nextStock })
+                .eq("id", productId);
+
+            if (updateError) {
+                console.error(updateError);
+                alert(updateError.message || "Failed to update inventory");
+                if (insertedSale?.id) {
+                    const { error: rollbackError } = await supabaseClient
+                        .from("sales")
+                        .delete()
+                        .eq("id", insertedSale.id);
+                    if (rollbackError) {
+                        console.error(rollbackError);
+                        alert(rollbackError.message || "Failed to rollback partial sale");
+                    }
+                }
+                return;
+            }
+
+            alert("Sale recorded successfully");
             await Promise.all([loadInventory(), refreshSalesDashboard(false)]);
         } finally {
             inFlightSales.delete(productId);
@@ -355,7 +430,10 @@
                 .select("id,quantity,status")
                 .eq("id", saleId)
                 .single();
-            if (saleError || !sale) throw new Error(saleError?.message || "Sale not found");
+            if (saleError || !sale) {
+                console.error(saleError);
+                throw new Error(saleError?.message || "Sale not found");
+            }
             if (sale.status === "returned") return;
 
             const { data: product, error: productError } = await supabaseClient
@@ -363,7 +441,10 @@
                 .select("id,stock")
                 .eq("id", productId)
                 .single();
-            if (productError || !product) throw new Error(productError?.message || "Product not found");
+            if (productError || !product) {
+                console.error(productError);
+                throw new Error(productError?.message || "Product not found");
+            }
 
             const qty = Math.max(1, Number(sale.quantity) || 1);
             const nextStock = (Number(product.stock) || 0) + qty;
@@ -376,22 +457,30 @@
             });
 
             if (rpcError) {
+                console.error(rpcError);
                 const { error: statusError } = await supabaseClient
                     .from("sales")
                     .update({ status: "returned" })
                     .eq("id", sale.id)
                     .eq("status", "completed");
-                if (statusError) throw new Error(statusError.message || "Failed to mark return");
+                if (statusError) {
+                    console.error(statusError);
+                    throw new Error(statusError.message || "Failed to mark return");
+                }
 
                 const { error: restockError } = await supabaseClient
                     .from("products")
                     .update({ stock: nextStock, status: "available" })
                     .eq("id", product.id);
-                if (restockError) throw new Error(restockError.message || "Failed to restock product");
+                if (restockError) {
+                    console.error(restockError);
+                    throw new Error(restockError.message || "Failed to restock product");
+                }
             }
 
             await Promise.all([loadInventory(), refreshSalesDashboard()]);
         } catch (error) {
+            console.error(error);
             alert(`Return failed: ${error.message || "Unknown error"}`);
         }
     };
