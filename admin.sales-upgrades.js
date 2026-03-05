@@ -306,71 +306,45 @@
         return `${prefix}: ${parts.join(" | ")}`;
     }
 
-    window.markSold = async function(productId) {
-        if (!currentAdminEmail) {
-            currentAdminEmail = await getSessionEmail();
-            if (!currentAdminEmail) {
-                alert("Session expired. Please sign in again.");
-                window.location.href = "login.html";
-                return;
-            }
-        }
-
+    window.markSold = async function(productId, buttonEl) {
         if (inFlightSales.has(productId)) return;
         inFlightSales.add(productId);
+        if (buttonEl) buttonEl.disabled = true;
+
         try {
-            const { data: product, error: productError } = await supabaseClient
+            const { data: product, error: fetchError } = await supabaseClient
                 .from("products")
-                .select("id,name,price,status,stock")
+                .select("*")
                 .eq("id", productId)
                 .single();
-            if (productError || !product) throw new Error(productError?.message || "Product not found");
 
-            const rawStock = Number(product.stock);
-            const currentStock = Number.isFinite(rawStock) ? rawStock : 1;
-            if (product.status === "sold" || currentStock <= 0) throw new Error("Product already sold.");
-
-            const price = Number(product.price) || 0;
-            const totalPrice = price;
-            const nextStock = currentStock - 1;
-            const nextStatus = nextStock > 0 ? "available" : "sold";
-
-            // Reliable path: insert sale first, then adjust inventory; rollback sale if inventory update fails.
-            const { data: inserted, error: saleError } = await supabaseClient
-                .from("sales")
-                .insert([{
-                    product_id: product.id,
-                    name: product.name || "Unnamed",
-                    price_rwf: price,
-                    quantity: 1,
-                    total_price: totalPrice,
-                    sold_by: currentAdminEmail,
-                    status: "completed"
-                }])
-                .select("id")
-                .single();
-            if (saleError) {
-                throw new Error(formatDbError("Sale insert failed", saleError));
+            if (fetchError) {
+                console.error(fetchError);
+                alert(fetchError.message || "Failed to load product");
+                return;
             }
 
-            const { error: updateError } = await supabaseClient
+            if (!product) {
+                alert("Product not found");
+                return;
+            }
+
+            const { error } = await supabaseClient
                 .from("products")
-                .update({ stock: nextStock, status: nextStatus })
-                .eq("id", product.id)
-                .eq("status", product.status)
-                .gt("stock", 0);
+                .update({ status: "sold" })
+                .eq("id", productId);
 
-            if (updateError) {
-                await supabaseClient.from("sales").delete().eq("id", inserted.id);
-                throw new Error(formatDbError("Inventory update failed", updateError));
+            if (error) {
+                console.error(error);
+                alert(error.message || "Failed to mark product as sold");
+                return;
             }
 
-            if (totalPrice > 100000) alert("High Value Sale Recorded");
-            await Promise.all([loadInventory(), refreshSalesDashboard()]);
-        } catch (error) {
-            alert(`Failed to mark sold: ${error.message || "Unknown error"}`);
+            alert("Product marked as sold");
+            await Promise.all([loadInventory(), refreshSalesDashboard(false)]);
         } finally {
             inFlightSales.delete(productId);
+            if (buttonEl) buttonEl.disabled = false;
         }
     };
 
@@ -422,11 +396,12 @@
         }
     };
 
-    window.deleteProduct = async function(productId, imageUrl) {
+    window.deleteProduct = async function(productId, imageUrl, buttonEl) {
         if (inFlightDeletes.has(productId)) return;
         const confirmed = window.confirm("Delete this product permanently?");
         if (!confirmed) return;
         inFlightDeletes.add(productId);
+        if (buttonEl) buttonEl.disabled = true;
 
         try {
             const { error: deleteError } = await supabaseClient
@@ -440,7 +415,13 @@
                     const index = (imageUrl || "").indexOf(marker);
                     if (index !== -1) {
                         const path = imageUrl.slice(index + marker.length).split("?")[0];
-                        if (path) await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]);
+                        if (path) {
+                            const { error: storageError } = await supabaseClient.storage.from(STORAGE_BUCKET).remove([path]);
+                            if (storageError) {
+                                console.error(storageError);
+                                alert(storageError.message);
+                            }
+                        }
                     }
                 } catch (cleanupErr) {
                     console.warn("Image cleanup warning:", cleanupErr);
@@ -450,6 +431,7 @@
                 return;
             }
 
+            console.error(deleteError);
             const errorText = `${deleteError.message || ""} ${deleteError.details || ""}`.toLowerCase();
             const isFkConflict = deleteError.code === "23503" ||
                 deleteError.status === 409 ||
@@ -469,7 +451,8 @@
                     .eq("id", productId);
 
                 if (archiveError) {
-                    alert(`Archive failed: ${archiveError.message}`);
+                    console.error(archiveError);
+                    alert(archiveError.message || "Archive failed");
                     return;
                 }
 
@@ -478,9 +461,10 @@
                 return;
             }
 
-            alert(`Delete failed: ${deleteError.message}`);
+            alert(deleteError.message || "Delete failed");
         } finally {
             inFlightDeletes.delete(productId);
+            if (buttonEl) buttonEl.disabled = false;
         }
     };
 
