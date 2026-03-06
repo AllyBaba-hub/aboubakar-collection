@@ -267,7 +267,7 @@
         </section>
 
         <section class="card">
-            <h2>Inventory</h2>
+            <h2 id="inventoryTitle">Inventory</h2>
             <p class="muted">Live updates enabled via Supabase Realtime.</p>
             <div id="inventoryStatus" class="status">Loading inventory...</div>
             <div class="table-wrap">
@@ -346,9 +346,6 @@
                 </div>
                 <div>
                     <button id="exportCsvBtn" class="btn btn-primary" type="button">Export Sales CSV</button>
-                </div>
-                <div id="resetFiltersWrap" style="display:none;">
-                    <button id="resetFiltersBtn" class="btn btn-danger" type="button">Reset</button>
                 </div>
             </div>
             <div class="table-wrap" style="margin-top:12px;">
@@ -663,6 +660,6 @@
 
         init();
     </script>
-    <script src="./admin.sales-upgrades.js?v=20260304v8"></script>
+    <script src="./admin.sales-upgrades.js?v=20260306v9"></script>
 </body>
 </html>
