@@ -348,16 +348,45 @@
         await refreshSalesDashboard(false);
     }
 
+    async function resetAdminDatabaseData() {
+        const { error: rpcError } = await supabaseClient.rpc("reset_admin_dashboard_data");
+        if (!rpcError) return;
+
+        const rpcMessage = String(rpcError.message || "");
+        const rpcMissing = /not found|does not exist|function/i.test(rpcMessage);
+        if (!rpcMissing) {
+            throw new Error(formatDbError("Database reset failed", rpcError));
+        }
+
+        // Fallback when SQL function is not installed.
+        const { error: salesResetError } = await supabaseClient
+            .from("sales")
+            .delete()
+            .not("id", "is", null);
+        if (salesResetError) {
+            throw new Error(formatDbError("Failed to clear sales table", salesResetError));
+        }
+
+        const { error: productsResetError } = await supabaseClient
+            .from("products")
+            .update({ status: "available", stock: 1 })
+            .not("id", "is", null);
+        if (productsResetError) {
+            throw new Error(formatDbError("Failed to reset products", productsResetError));
+        }
+    }
+
     async function resetAdminDashboard() {
         if (resetFiltersBtn) {
             resetFiltersBtn.disabled = true;
             resetFiltersBtn.textContent = "Resetting...";
         }
         try {
+            await exportSalesCsv();
+            await resetAdminDatabaseData();
             await resetSalesFilters();
             await Promise.all([loadInventory(), refreshSalesDashboard(false)]);
-            await exportSalesCsv();
-            alert("Dashboard reset complete. Filters cleared, data reloaded, and sales report downloaded.");
+            alert("Dashboard reset complete. Report downloaded and database data reset.");
         } catch (error) {
             console.error(error);
             alert(error.message || "Dashboard reset failed");
@@ -371,7 +400,7 @@
 
     async function confirmAndResetSalesFilters() {
         const confirmed = window.confirm(
-            "This will reset the admin dashboard by clearing all sales filters, reloading inventory and sales metrics, then automatically downloading the full sales report CSV. Continue?"
+            "This will download the current full sales report CSV, then reset database data (clear sales and restore products to available stock), and reload the dashboard. Continue?"
         );
         if (!confirmed) return;
         await resetAdminDashboard();
