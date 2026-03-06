@@ -12,6 +12,7 @@
     const metricMonthlyRevenue = document.getElementById("metricMonthlyRevenue");
     const inventoryTitle = document.getElementById("inventoryTitle");
     const exportCsvBtn = document.getElementById("exportCsvBtn");
+    const resetFiltersBtn = document.getElementById("resetFiltersBtn");
     const filterFrom = document.getElementById("filterFrom");
     const filterTo = document.getElementById("filterTo");
     const filterProduct = document.getElementById("filterProduct");
@@ -347,6 +348,14 @@
         await refreshSalesDashboard(false);
     }
 
+    async function confirmAndResetSalesFilters() {
+        const confirmed = window.confirm(
+            "Reset will clear From, To, Product Name, and Sold By filters, then reload all sales records. Continue?"
+        );
+        if (!confirmed) return;
+        await resetSalesFilters();
+    }
+
     async function handleInventoryResetSequence() {
         const now = Date.now();
         inventoryResetClicks.push(now);
@@ -609,6 +618,7 @@
         // Polling disabled as well; dashboard refreshes on page load and after actions.
         // subscribeSalesRealtime();
         if (exportCsvBtn) exportCsvBtn.addEventListener("click", exportSalesCsv);
+        if (resetFiltersBtn) resetFiltersBtn.addEventListener("click", confirmAndResetSalesFilters);
         if (inventoryTitle) inventoryTitle.addEventListener("click", handleInventoryResetSequence);
     }
 
