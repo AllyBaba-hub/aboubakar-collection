@@ -10,9 +10,8 @@
     const metricSoldItems = document.getElementById("metricSoldItems");
     const metricTodaySold = document.getElementById("metricTodaySold");
     const metricMonthlyRevenue = document.getElementById("metricMonthlyRevenue");
+    const inventoryTitle = document.getElementById("inventoryTitle");
     const exportCsvBtn = document.getElementById("exportCsvBtn");
-    const resetFiltersBtn = document.getElementById("resetFiltersBtn");
-    const resetFiltersWrap = document.getElementById("resetFiltersWrap");
     const filterFrom = document.getElementById("filterFrom");
     const filterTo = document.getElementById("filterTo");
     const filterProduct = document.getElementById("filterProduct");
@@ -29,7 +28,7 @@
     const seenRealtimeEvents = new Map();
     const inFlightSales = new Set();
     const inFlightDeletes = new Set();
-    const deleteUnlockClicks = [];
+    const inventoryResetClicks = [];
 
     function setStatusText(el, message, isError = false) {
         if (!el) return;
@@ -348,15 +347,15 @@
         await refreshSalesDashboard(false);
     }
 
-    function trackDeleteUnlockSequence() {
+    async function handleInventoryResetSequence() {
         const now = Date.now();
-        deleteUnlockClicks.push(now);
-        while (deleteUnlockClicks.length && now - deleteUnlockClicks[0] > 4000) {
-            deleteUnlockClicks.shift();
+        inventoryResetClicks.push(now);
+        while (inventoryResetClicks.length && now - inventoryResetClicks[0] > 4000) {
+            inventoryResetClicks.shift();
         }
-        if (deleteUnlockClicks.length >= 5 && resetFiltersWrap) {
-            resetFiltersWrap.style.display = "block";
-            deleteUnlockClicks.length = 0;
+        if (inventoryResetClicks.length >= 5) {
+            inventoryResetClicks.length = 0;
+            await resetSalesFilters();
         }
     }
 
@@ -521,7 +520,6 @@
 
     window.deleteProduct = async function(productId, imageUrl, buttonEl) {
         if (inFlightDeletes.has(productId)) return;
-        trackDeleteUnlockSequence();
         const confirmed = window.confirm("Delete this product permanently?");
         if (!confirmed) return;
         inFlightDeletes.add(productId);
@@ -611,7 +609,7 @@
         // Polling disabled as well; dashboard refreshes on page load and after actions.
         // subscribeSalesRealtime();
         if (exportCsvBtn) exportCsvBtn.addEventListener("click", exportSalesCsv);
-        if (resetFiltersBtn) resetFiltersBtn.addEventListener("click", resetSalesFilters);
+        if (inventoryTitle) inventoryTitle.addEventListener("click", handleInventoryResetSequence);
     }
 
     startEnhancements();
