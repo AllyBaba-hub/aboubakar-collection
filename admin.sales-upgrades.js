@@ -348,12 +348,33 @@
         await refreshSalesDashboard(false);
     }
 
+    async function resetAdminDashboard() {
+        if (resetFiltersBtn) {
+            resetFiltersBtn.disabled = true;
+            resetFiltersBtn.textContent = "Resetting...";
+        }
+        try {
+            await resetSalesFilters();
+            await Promise.all([loadInventory(), refreshSalesDashboard(false)]);
+            await exportSalesCsv();
+            alert("Dashboard reset complete. Filters cleared, data reloaded, and sales report downloaded.");
+        } catch (error) {
+            console.error(error);
+            alert(error.message || "Dashboard reset failed");
+        } finally {
+            if (resetFiltersBtn) {
+                resetFiltersBtn.disabled = false;
+                resetFiltersBtn.textContent = "Reset Filters";
+            }
+        }
+    }
+
     async function confirmAndResetSalesFilters() {
         const confirmed = window.confirm(
-            "Reset will clear From, To, Product Name, and Sold By filters, then reload all sales records. Continue?"
+            "This will reset the admin dashboard by clearing all sales filters, reloading inventory and sales metrics, then automatically downloading the full sales report CSV. Continue?"
         );
         if (!confirmed) return;
-        await resetSalesFilters();
+        await resetAdminDashboard();
     }
 
     async function handleInventoryResetSequence() {
