@@ -369,10 +369,10 @@
 
         const { error: productsResetError } = await supabaseClient
             .from("products")
-            .update({ status: "available", stock: 1 })
+            .delete()
             .not("id", "is", null);
         if (productsResetError) {
-            throw new Error(formatDbError("Failed to reset products", productsResetError));
+            throw new Error(formatDbError("Failed to clear inventory", productsResetError));
         }
     }
 
@@ -386,7 +386,7 @@
             await resetAdminDatabaseData();
             await resetSalesFilters();
             await Promise.all([loadInventory(), refreshSalesDashboard(false)]);
-            alert("Dashboard reset complete. Report downloaded and database data reset.");
+            alert("Dashboard reset complete. Report downloaded, sales cleared, and inventory cleared.");
         } catch (error) {
             console.error(error);
             alert(error.message || "Dashboard reset failed");
@@ -400,7 +400,7 @@
 
     async function confirmAndResetSalesFilters() {
         const confirmed = window.confirm(
-            "This will download the current full sales report CSV, then reset database data (clear sales and restore products to available stock), and reload the dashboard. Continue?"
+            "This will download the current full sales report CSV, then reset database data (clear sales and clear inventory), and reload the dashboard. Continue?"
         );
         if (!confirmed) return;
         await resetAdminDashboard();
